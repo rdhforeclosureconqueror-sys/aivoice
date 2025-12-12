@@ -1,0 +1,30 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Envs
+venv/
+.venv/
+env/
+
+# Secrets
+.env
+.env.*
+
+# Big model / weight files (DO NOT COMMIT)
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.onnx
+*.safetensors
+
+# Outputs / audio
+outputs/
+generated_audio/
+*.wav
+*.mp3
+
+# OS junk
+.DS_Store
+Thumbs.db
