@@ -1,10 +1,13 @@
 services:
   - type: web
-    name: openvoice-fastapi
+    name: aivoice
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: |
+      apt-get update && apt-get install -y ffmpeg pkg-config
+      pip install -U pip setuptools wheel
+      pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: OPENVOICE_UPSTREAM_URL
-        value: ""
+      - key: PYTHON_VERSION
+        value: 3.11.9
