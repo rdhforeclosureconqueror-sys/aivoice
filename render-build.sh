@@ -1,21 +1,8 @@
 #!/usr/bin/env bash
-set -e
+set -o errexit  # stop on first error
 
-echo "==> Installing system packages..."
-apt-get update
-apt-get install -y --no-install-recommends \
-  ffmpeg \
-  pkg-config \
-  libavformat-dev \
-  libavcodec-dev \
-  libavdevice-dev \
-  libavutil-dev \
-  libavfilter-dev \
-  libswscale-dev \
-  libswresample-dev
+# Upgrade pip safely
+pip install --upgrade pip
 
-echo "==> Upgrading pip tooling..."
-python -m pip install -U pip setuptools wheel
-
-echo "==> Installing Python requirements..."
+# Install Python dependencies
 pip install -r requirements.txt
