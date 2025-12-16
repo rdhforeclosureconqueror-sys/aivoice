@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-set -o errexit  # stop on first error
+set -o errexit
 
-# Upgrade pip safely
-pip install --upgrade pip
+# Install ffmpeg (Render's base image supports apt-get)
+apt-get update
+apt-get install -y ffmpeg
 
-# Install Python dependencies
+# Upgrade pip
+python -m pip install --upgrade pip
+
+# Install Python deps
 pip install -r requirements.txt
