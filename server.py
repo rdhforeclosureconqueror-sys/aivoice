@@ -1,73 +1,16 @@
-import io
-import os
-import traceback
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+# server.py
+# Render entrypoint for AIVOICE (OpenAI TTS + optional proxy mode).
+# This intentionally does NOT import OpenVoice so the service boots reliably.
 
-# Import your OpenVoice wrapper
-import openvoice_app
+from fastapi import FastAPI
+from app.main import app as aivoice_app  # <-- your working FastAPI app is here (app/main.py)
 
-app = FastAPI(title="aiVoice (OpenVoice API)")
+app = FastAPI(title="aiVoice (OpenAI TTS/STT Gateway)", version="1.0.0")
 
-class SpeakRequest(BaseModel):
-    text: str
-    speaker: str | None = None  # demo-speaker-0, etc
-    speed: float | None = 1.0
+# Mount your existing app (it already has /health and /speak)
+app.mount("/", aivoice_app)
 
-# ---- lazy-loaded singleton ----
-_ENGINE = None
-
-def get_engine():
-    global _ENGINE
-    if _ENGINE is not None:
-        return _ENGINE
-
-    # Try common patterns. We’ll finalize once we see your openvoice_app.py structure.
-    if hasattr(openvoice_app, "get_engine"):
-        _ENGINE = openvoice_app.get_engine()
-    elif hasattr(openvoice_app, "OpenVoiceApp"):
-        _ENGINE = openvoice_app.OpenVoiceApp()
-    elif hasattr(openvoice_app, "engine"):
-        _ENGINE = openvoice_app.engine
-    else:
-        raise RuntimeError("Could not find engine entrypoint in openvoice_app.py")
-
-    return _ENGINE
-
-@app.get("/health")
-def health():
-    return {"ok": True}
-
-@app.post("/speak")
-def speak(req: SpeakRequest):
-    try:
-        engine = get_engine()
-
-        # Expectation: engine.speak(text, speaker=..., speed=...) -> bytes OR file path
-        out = None
-        if hasattr(engine, "speak"):
-            out = engine.speak(req.text, speaker=req.speaker, speed=req.speed)
-        elif hasattr(openvoice_app, "speak"):
-            out = openvoice_app.speak(req.text, speaker=req.speaker, speed=req.speed)
-        else:
-            raise RuntimeError("No speak() method found (engine.speak or openvoice_app.speak).")
-
-        # If you return a filepath, convert to bytes:
-        if isinstance(out, str) and os.path.exists(out):
-            with open(out, "rb") as f:
-                audio_bytes = f.read()
-        elif isinstance(out, (bytes, bytearray)):
-            audio_bytes = bytes(out)
-        else:
-            raise RuntimeError("speak() must return bytes or a valid file path.")
-
-        return StreamingResponse(
-            io.BytesIO(audio_bytes),
-            media_type="audio/wav",
-            headers={"Cache-Control": "no-store"},
-        )
-
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+# Optional: a simple root endpoint (doesn't break anything if main.py already has "/")
+@app.get("/")
+def root():
+    return {"ok": True, "service": "aivoice", "features": ["tts(/speak)"], "openvoice": False}
