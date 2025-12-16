@@ -1,8 +1,11 @@
 import os
+import io
+import shutil
+import subprocess
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
-import io
 
 # If you want proxy mode:
 import httpx
@@ -20,9 +23,36 @@ class SpeakRequest(BaseModel):
     pitch: float | None = 0.0       # optional
 
 
+@app.get("/")
+def root():
+    return {
+        "status": "ok",
+        "message": "OpenVoice API is live. Try /docs, /ffmpeg, or POST /speak"
+    }
+
+
+@app.head("/")
+def root_head():
+    # Prevent 405 spam from Render health checks
+    return
+
+
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/ffmpeg")
+def ffmpeg_check():
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        return {"ffmpeg_found": False, "path": None}
+
+    version_line = subprocess.check_output(
+        ["ffmpeg", "-version"], text=True
+    ).splitlines()[0]
+
+    return {"ffmpeg_found": True, "path": ffmpeg_path, "version_line": version_line}
 
 
 @app.post("/speak")
@@ -36,7 +66,7 @@ async def speak(req: SpeakRequest):
         raise HTTPException(status_code=400, detail="format must be mp3 or wav")
 
     # ---- MODE SWITCH ----
-    # If OPENVOICE_UPSTREAM_URL is set, we proxy to it (standardize interface for your other services)
+    # If OPENVOICE_UPSTREAM_URL is set, proxy to it (standardize interface for your other services)
     upstream = os.getenv("OPENVOICE_UPSTREAM_URL", "").strip()
 
     try:
@@ -49,7 +79,7 @@ async def speak(req: SpeakRequest):
                 )
                 r.raise_for_status()
 
-                # If upstream returns audio bytes directly
+                # Upstream returns audio bytes directly
                 content_type = r.headers.get("content-type") or get_audio_mime(fmt)
                 return Response(content=r.content, media_type=content_type)
 
