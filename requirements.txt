@@ -18,7 +18,10 @@ jieba==0.42.1
 gradio==3.48.0
 langid==1.1.6
 python-multipart
-fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pydantic==2.8.2
 httpx==0.27.2
+fastapi==0.115.0
+python-dotenv
+
+
