@@ -2,7 +2,7 @@ import io
 import os
 from typing import Optional, Literal
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
@@ -18,7 +18,7 @@ OPENAI_TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "alloy")
 
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
-    "https://mufasa-knowledge-bank.onrender.com,https://prince-of-pan-africa.onrender.com"
+    "https://mufasa-knowledge-bank.onrender.com,https://prince-of-pan-africa.onrender.com,https://mufasafitsite.onrender.com"
 )
 
 AIVOICE_API_KEY = os.getenv("AIVOICE_API_KEY", "")
@@ -30,7 +30,7 @@ client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 # ----------------------------
 app = FastAPI(title=APP_TITLE)
 
-# CORS
+# ✅ Improved CORS handling
 origins = ["*"] if "*" in ALLOWED_ORIGINS else [
     o.strip() for o in ALLOWED_ORIGINS.split(",") if o.strip()
 ]
@@ -38,9 +38,11 @@ origins = ["*"] if "*" in ALLOWED_ORIGINS else [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,
 )
 
 # ----------------------------
@@ -58,7 +60,7 @@ def _require_client():
     if not client:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
 
-# ✅ UPDATED: Skip API key validation for preflight OPTIONS requests
+# ✅ Allow preflight (OPTIONS) without auth
 def _require_service_key(request: Request):
     if request.method == "OPTIONS":
         return
@@ -83,11 +85,15 @@ def root():
 def health():
     return {"ok": True, "model": OPENAI_TTS_MODEL}
 
-# ✅ NEW: Explicitly allow preflight OPTIONS on /speak
+# ✅ Properly handle browser preflight CORS requests
 @app.options("/speak")
-def speak_options():
-    """Handle browser preflight CORS request"""
-    return Response(status_code=200)
+async def speak_options(request: Request):
+    response = Response(status_code=200)
+    response.headers["Access-Control-Allow-Origin"] = ",".join(origins)
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-AIVOICE-KEY"
+    response.headers["Access-Control-Max-Age"] = "86400"
+    return response
 
 @app.post("/speak")
 def speak(req: SpeakRequest, request: Request):
@@ -102,7 +108,6 @@ def speak(req: SpeakRequest, request: Request):
     fmt = req.format or "mp3"
 
     try:
-        # ✅ SAFE OpenAI call (no unsupported args)
         audio = client.audio.speech.create(
             model=OPENAI_TTS_MODEL,
             voice=voice,
@@ -111,16 +116,20 @@ def speak(req: SpeakRequest, request: Request):
 
         audio_bytes = audio.read()
 
-        return StreamingResponse(
+        response = StreamingResponse(
             io.BytesIO(audio_bytes),
             media_type=_mime(fmt),
             headers={"Cache-Control": "no-store"},
         )
+        response.headers["Access-Control-Allow-Origin"] = ",".join(origins)
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-AIVOICE-KEY"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"TTS failed: {e}")
 
-# Alias
+# Alias for /tts
 @app.post("/tts")
 def tts(req: SpeakRequest, request: Request):
     return speak(req, request)
