@@ -1,7 +1,7 @@
 import io
 import os
 from typing import Optional, Literal
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -58,7 +58,10 @@ def _require_client():
     if not client:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
 
+# ✅ UPDATED: Skip API key validation for preflight OPTIONS requests
 def _require_service_key(request: Request):
+    if request.method == "OPTIONS":
+        return
     if AIVOICE_API_KEY and request.headers.get("X-AIVOICE-KEY") != AIVOICE_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid X-AIVOICE-KEY")
 
@@ -79,6 +82,12 @@ def root():
 @app.get("/health")
 def health():
     return {"ok": True, "model": OPENAI_TTS_MODEL}
+
+# ✅ NEW: Explicitly allow preflight OPTIONS on /speak
+@app.options("/speak")
+def speak_options():
+    """Handle browser preflight CORS request"""
+    return Response(status_code=200)
 
 @app.post("/speak")
 def speak(req: SpeakRequest, request: Request):
