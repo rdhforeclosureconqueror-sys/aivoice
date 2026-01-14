@@ -1,7 +1,8 @@
 import io
 import os
 from typing import Optional, Literal
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response
+
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -18,7 +19,9 @@ OPENAI_TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "alloy")
 
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
-    "https://mufasa-knowledge-bank.onrender.com,https://prince-of-pan-africa.onrender.com,https://mufasafitsite.onrender.com"
+    "https://mufasa-knowledge-bank.onrender.com,"
+    "https://prince-of-pan-africa.onrender.com,"
+    "https://mufasafitsite.onrender.com"
 )
 
 AIVOICE_API_KEY = os.getenv("AIVOICE_API_KEY", "")
@@ -30,19 +33,17 @@ client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 # ----------------------------
 app = FastAPI(title=APP_TITLE)
 
-# ✅ Improved CORS handling
-origins = ["*"] if "*" in ALLOWED_ORIGINS else [
-    o.strip() for o in ALLOWED_ORIGINS.split(",") if o.strip()
-]
+# ---- CORS (let the middleware handle ALL preflights + headers) ----
+origins = [o.strip() for o in ALLOWED_ORIGINS.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=origins,         # must be a list of exact origins
+    allow_credentials=False,       # keep False unless you *need* cookies/auth
+    allow_methods=["*"],           # includes OPTIONS
+    allow_headers=["*"],           # includes X-AIVOICE-KEY
     expose_headers=["*"],
-    max_age=600,
+    max_age=86400,
 )
 
 # ----------------------------
@@ -60,14 +61,15 @@ def _require_client():
     if not client:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
 
-# ✅ Allow preflight (OPTIONS) without auth
 def _require_service_key(request: Request):
+    # IMPORTANT: Do NOT block preflight.
     if request.method == "OPTIONS":
         return
     if AIVOICE_API_KEY and request.headers.get("X-AIVOICE-KEY") != AIVOICE_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid X-AIVOICE-KEY")
 
 def _mime(fmt: str):
+    fmt = (fmt or "mp3").lower()
     return "audio/mpeg" if fmt == "mp3" else "audio/wav"
 
 # ----------------------------
@@ -85,16 +87,6 @@ def root():
 def health():
     return {"ok": True, "model": OPENAI_TTS_MODEL}
 
-# ✅ Properly handle browser preflight CORS requests
-@app.options("/speak")
-async def speak_options(request: Request):
-    response = Response(status_code=200)
-    response.headers["Access-Control-Allow-Origin"] = ",".join(origins)
-    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-AIVOICE-KEY"
-    response.headers["Access-Control-Max-Age"] = "86400"
-    return response
-
 @app.post("/speak")
 def speak(req: SpeakRequest, request: Request):
     _require_service_key(request)
@@ -104,8 +96,8 @@ def speak(req: SpeakRequest, request: Request):
     if not text:
         raise HTTPException(status_code=400, detail="text required")
 
-    voice = req.voice or OPENAI_TTS_VOICE
-    fmt = req.format or "mp3"
+    voice = (req.voice or OPENAI_TTS_VOICE).strip()
+    fmt = (req.format or "mp3").strip().lower()
 
     try:
         audio = client.audio.speech.create(
@@ -116,20 +108,15 @@ def speak(req: SpeakRequest, request: Request):
 
         audio_bytes = audio.read()
 
-        response = StreamingResponse(
+        return StreamingResponse(
             io.BytesIO(audio_bytes),
             media_type=_mime(fmt),
             headers={"Cache-Control": "no-store"},
         )
-        response.headers["Access-Control-Allow-Origin"] = ",".join(origins)
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-AIVOICE-KEY"
-        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        return response
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"TTS failed: {e}")
 
-# Alias for /tts
+# Alias for /tts (keep identical behavior)
 @app.post("/tts")
 def tts(req: SpeakRequest, request: Request):
     return speak(req, request)
