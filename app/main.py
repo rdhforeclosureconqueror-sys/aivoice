@@ -11,6 +11,7 @@ from pydantic import BaseModel
 import httpx
 
 from .tts_engine import synthesize_audio_bytes, get_audio_mime
+from app.internal_voice import router as internal_voice_router
 
 app = FastAPI(title="OpenVoice FastAPI Wrapper", version="1.0.0")
 
@@ -100,3 +101,6 @@ async def speak(req: SpeakRequest):
         raise HTTPException(status_code=502, detail=f"Upstream error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"TTS error: {str(e)}")
+
+
+app.include_router(internal_voice_router)

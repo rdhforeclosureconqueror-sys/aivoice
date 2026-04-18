@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
+from app.internal_voice import router as internal_voice_router
 
 # ----------------------------
 # CONFIG
@@ -190,3 +191,6 @@ async def stt(file: UploadFile = File(...), request: Request = None):
 async def whisper(file: UploadFile = File(...), request: Request = None):
     return await stt(file, request)
 
+
+
+app.include_router(internal_voice_router)
