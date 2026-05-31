@@ -7,6 +7,29 @@
 <a href="https://trendshift.io/repositories/6161" target="_blank"><img src="https://trendshift.io/api/badge/repositories/6161" alt="myshell-ai%2FOpenVoice | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </div>
 
+
+## aiVoice service auth contract
+
+The Render entrypoint is `server:app` from `server.py`. The `/speak`, `/tts`, `/stt`, and `/whisper` routes use local service-token auth when a token is configured.
+
+Preferred service-to-service contract for Garvey:
+
+```http
+POST /speak
+Content-Type: application/json
+x-internal-token: <SKILL_WORLD_TTS_TOKEN matching INTERNAL_VOICE_TOKEN on aiVoice>
+```
+
+Relevant environment variables:
+
+- `OPENAI_API_KEY`: exact env var name used to initialize the OpenAI client.
+- `INTERNAL_VOICE_TOKEN`: preferred shared secret for `x-internal-token`.
+- `AIVOICE_API_KEY`: legacy shared secret for `X-AIVOICE-KEY`, used only when `INTERNAL_VOICE_TOKEN` is absent.
+- `VOICE_AUTH_MODE`: supports `open`, `internal`, or `strict`; `/speak` still requires a token if `INTERNAL_VOICE_TOKEN` or `AIVOICE_API_KEY` is configured.
+- `OPENVOICE_UPSTREAM_URL`: reported for diagnostics, but the Render `server:app` entrypoint does not proxy `/speak` to this URL.
+
+Safe auth failure details/log reasons are `local_route_auth_failed`, `missing_internal_token`, `invalid_internal_token`, `openai_auth_failed`, and `upstream_proxy_auth_failed`.
+
 ## Introduction
 
 ### OpenVoice V1

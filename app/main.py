@@ -1,5 +1,6 @@
 import os
 import io
+import logging
 import shutil
 import subprocess
 
@@ -12,6 +13,8 @@ import httpx
 
 from .tts_engine import synthesize_audio_bytes, get_audio_mime
 from app.internal_voice import router as internal_voice_router
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="OpenVoice FastAPI Wrapper", version="1.0.0")
 
@@ -78,6 +81,9 @@ async def speak(req: SpeakRequest):
                     upstream.rstrip("/") + "/speak",
                     json=req.model_dump(),
                 )
+                if r.status_code == 401:
+                    logger.warning("upstream_proxy_auth_failed", extra={"auth_reason": "upstream_proxy_auth_failed"})
+                    raise HTTPException(status_code=502, detail="upstream_proxy_auth_failed")
                 r.raise_for_status()
 
                 # Upstream returns audio bytes directly
@@ -97,9 +103,16 @@ async def speak(req: SpeakRequest):
         # StreamingResponse is safer for larger audio
         return StreamingResponse(io.BytesIO(audio_bytes), media_type=mime)
 
+    except HTTPException:
+        raise
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Upstream error: {str(e)}")
     except Exception as e:
+        status_code = getattr(e, "status_code", None)
+        response = getattr(e, "response", None)
+        if status_code == 401 or getattr(response, "status_code", None) == 401:
+            logger.warning("openai_auth_failed", extra={"auth_reason": "openai_auth_failed"})
+            raise HTTPException(status_code=502, detail="openai_auth_failed")
         raise HTTPException(status_code=500, detail=f"TTS error: {str(e)}")
 
 
