@@ -105,6 +105,17 @@ class ServerAuthTest(unittest.TestCase):
         self.assertTrue(body["auth_required"])
         self.assertNotIn("service-token", response.text)
 
+    def test_simba_wa_ujamaa_origin_is_authorized_by_default(self):
+        client = self._client(OPENAI_API_KEY="openai-key")
+
+        response = client.get("/cors-debug", headers={"Origin": "https://simbawaujamaa.com"})
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["origin_header"], "https://simbawaujamaa.com")
+        self.assertIn("https://simbawaujamaa.com", body["server_allowed_origins"])
+        self.assertIn("https://www.simbawaujamaa.com", body["server_allowed_origins"])
+
     def test_openai_401_uses_safe_detail(self):
         client = self._client(OPENAI_API_KEY="openai-key")
 

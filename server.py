@@ -28,6 +28,8 @@ DEFAULT_ALLOWED_ORIGINS = [
     "https://mufasa-knowledge-bank.onrender.com",
     "https://prince-of-pan-africa.onrender.com",
     "https://mufasafitsite.onrender.com",
+    "https://simbawaujamaa.com",
+    "https://www.simbawaujamaa.com",
     # dev helpers (safe to keep):
     "http://localhost:3000",
     "http://localhost:5173",
