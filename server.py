@@ -182,6 +182,7 @@ def root():
         "allowed_origins": origins,  # helpful
         "voice_auth_mode": VOICE_AUTH_MODE,
         "auth_required": bool(_configured_token()[0]) or VOICE_AUTH_MODE in {"internal", "strict"},
+        "public_speak_auth_required": False,
         "expected_auth_header": expected_header or None,
         "openvoice_upstream_configured": bool(OPENVOICE_UPSTREAM_URL),
         "endpoints": ["/health", "/cors-debug", "/speak", "/tts", "/stt", "/whisper"],
@@ -203,12 +204,11 @@ def cors_debug(request: Request):
         "server_expect_header_key": expected_header or None,
         "voice_auth_mode": VOICE_AUTH_MODE,
         "auth_required": bool(_configured_token()[0]) or VOICE_AUTH_MODE in {"internal", "strict"},
+        "public_speak_auth_required": False,
         "openvoice_upstream_configured": bool(OPENVOICE_UPSTREAM_URL),
     }
 
-@app.post("/speak")
-def speak(req: SpeakRequest, request: Request):
-    _require_service_key(request)
+def _create_speech_response(req: SpeakRequest, request: Request):
     _require_client()
 
     text = (req.text or "").strip()
@@ -238,10 +238,17 @@ def speak(req: SpeakRequest, request: Request):
             raise HTTPException(status_code=502, detail="openai_auth_failed")
         raise HTTPException(status_code=500, detail=f"TTS failed: {e}")
 
-# Alias for /tts (keep identical behavior)
+@app.post("/speak")
+def speak(req: SpeakRequest, request: Request):
+    # Public production contract: callers may omit x-internal-token.
+    # Token-bearing legacy callers continue to work because auth is not required here.
+    return _create_speech_response(req, request)
+
+
 @app.post("/tts")
 def tts(req: SpeakRequest, request: Request):
-    return speak(req, request)
+    _require_service_key(request)
+    return _create_speech_response(req, request)
 
 @app.post("/stt")
 async def stt(file: UploadFile = File(...), request: Request = None):

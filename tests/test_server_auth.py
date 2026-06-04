@@ -50,7 +50,7 @@ class ServerAuthTest(unittest.TestCase):
         self.assertEqual(response.content, b"audio")
         self.assertEqual(response.headers["content-type"], "audio/mpeg")
 
-    def test_speak_rejects_missing_internal_token_with_safe_detail(self):
+    def test_speak_accepts_missing_internal_token_for_public_contract(self):
         client = self._client(
             OPENAI_API_KEY="openai-key",
             VOICE_AUTH_MODE="internal",
@@ -59,10 +59,23 @@ class ServerAuthTest(unittest.TestCase):
 
         response = client.post("/speak", json={"text": "hello", "format": "mp3"})
 
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"audio")
+        self.assertEqual(response.headers["content-type"], "audio/mpeg")
+
+    def test_tts_still_rejects_missing_internal_token_with_safe_detail(self):
+        client = self._client(
+            OPENAI_API_KEY="openai-key",
+            VOICE_AUTH_MODE="internal",
+            INTERNAL_VOICE_TOKEN="service-token",
+        )
+
+        response = client.post("/tts", json={"text": "hello", "format": "mp3"})
+
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()["detail"], "missing_internal_token")
 
-    def test_speak_rejects_invalid_internal_token_with_safe_detail(self):
+    def test_tts_still_rejects_invalid_internal_token_with_safe_detail(self):
         client = self._client(
             OPENAI_API_KEY="openai-key",
             VOICE_AUTH_MODE="internal",
@@ -70,7 +83,7 @@ class ServerAuthTest(unittest.TestCase):
         )
 
         response = client.post(
-            "/speak",
+            "/tts",
             headers={"x-internal-token": "wrong-token"},
             json={"text": "hello", "format": "mp3"},
         )
@@ -90,6 +103,28 @@ class ServerAuthTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"audio")
 
+    def test_internal_voice_routes_still_enforce_missing_internal_token(self):
+        client = self._client(
+            OPENAI_API_KEY="openai-key",
+            VOICE_AUTH_MODE="internal",
+            INTERNAL_VOICE_TOKEN="service-token",
+        )
+
+        response = client.post(
+            "/internal/voice/checkin-prompt",
+            json={
+                "child_id": "c1",
+                "age_band": "7-9",
+                "prompt_id": "p1",
+                "voice_text": "hello child",
+                "voice_pacing": "slow",
+                "voice_chunk_id": "chunk-1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["detail"], "missing_internal_token")
+
     def test_cors_debug_reports_expected_header_without_secret(self):
         client = self._client(
             OPENAI_API_KEY="openai-key",
@@ -103,6 +138,7 @@ class ServerAuthTest(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["server_expect_header_key"], "x-internal-token")
         self.assertTrue(body["auth_required"])
+        self.assertFalse(body["public_speak_auth_required"])
         self.assertNotIn("service-token", response.text)
 
     def test_simba_wa_ujamaa_origin_is_authorized_by_default(self):
