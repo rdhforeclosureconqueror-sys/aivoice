@@ -10,14 +10,14 @@
 
 ## aiVoice service auth contract
 
-The Render entrypoint is `server:app` from `server.py`. The `/speak`, `/tts`, `/stt`, and `/whisper` routes use local service-token auth when a token is configured.
+The Render entrypoint is `server:app` from `server.py`. The public `/speak` route accepts requests with or without `x-internal-token`; token-bearing legacy callers remain compatible. The `/tts`, `/stt`, `/whisper`, and `/internal/voice/*` routes still use local service-token auth according to `VOICE_AUTH_MODE` and configured tokens.
 
-Preferred service-to-service contract for Skill World production callers:
+Public service-to-service contract for Skill World production callers:
 
 ```http
 POST /speak
 Content-Type: application/json
-x-internal-token: <SKILL_WORLD_TTS_TOKEN matching INTERNAL_VOICE_TOKEN on aiVoice>
+x-internal-token: <optional existing caller token>
 ```
 
 ### Simba Wa Ujamaa / Skill World production connection
@@ -28,7 +28,7 @@ Backend env for Simba/Prince:
 
 ```dotenv
 SKILL_WORLD_TTS_URL=https://aivoice-wmrv.onrender.com/speak
-SKILL_WORLD_TTS_TOKEN=<shared value, only required when aiVoice has INTERNAL_VOICE_TOKEN configured>
+SKILL_WORLD_TTS_TOKEN=<optional shared value for older token-bearing callers>
 ```
 
 aiVoice service env relevant to this contract:
@@ -38,7 +38,7 @@ aiVoice service env relevant to this contract:
 - `OPENAI_TTS_VOICE`: optional default voice override; defaults to `alloy`.
 - `INTERNAL_VOICE_TOKEN`: preferred shared secret for `x-internal-token`.
 - `AIVOICE_API_KEY`: legacy shared secret for `X-AIVOICE-KEY`, used only when `INTERNAL_VOICE_TOKEN` is absent.
-- `VOICE_AUTH_MODE`: supports `open`, `internal`, or `strict`; `/speak` still requires a token if `INTERNAL_VOICE_TOKEN` or `AIVOICE_API_KEY` is configured.
+- `VOICE_AUTH_MODE`: supports `open`, `internal`, or `strict`; public `/speak` does not require a token in any mode, while `/tts`, `/stt`, `/whisper`, and `/internal/voice/*` still enforce token rules according to this mode and configured tokens.
 - `ALLOWED_ORIGINS`: optional comma-separated CORS additions. Server-to-server `/speak` calls do not require an Origin header, but browser callers must exactly match the allowlist origin.
 - `OPENVOICE_UPSTREAM_URL`: reported for diagnostics, but the Render `server:app` entrypoint does not proxy `/speak` to this URL.
 
@@ -68,13 +68,13 @@ Expected `/speak` response:
 - `format: "wav"`: `Content-Type: audio/wav`.
 - Response header includes `Cache-Control: no-store`; the caller is expected to save/cache audio if needed.
 - Validation errors are JSON FastAPI errors, for example HTTP `400` when `text` is empty.
-- Auth errors are JSON FastAPI errors with safe details such as `missing_internal_token` or `invalid_internal_token`.
+- Public `/speak` does not return auth errors for missing `x-internal-token`; protected routes can still return JSON FastAPI auth errors with safe details such as `missing_internal_token` or `invalid_internal_token`.
 
 Auth and allowlist behavior:
 
-- If `INTERNAL_VOICE_TOKEN` is configured on aiVoice, Simba/Prince must send `x-internal-token: <SKILL_WORLD_TTS_TOKEN>`.
-- If `INTERNAL_VOICE_TOKEN` is absent but legacy `AIVOICE_API_KEY` is configured, callers must send `X-AIVOICE-KEY: <token>`.
-- If neither token is configured and `VOICE_AUTH_MODE=open`, `/speak` accepts server-to-server calls without an auth header.
+- Public `/speak` accepts Simba/Prince server-to-server calls without an auth header, even when `INTERNAL_VOICE_TOKEN`, legacy `AIVOICE_API_KEY`, or a non-open `VOICE_AUTH_MODE` is configured.
+- Existing `/speak` callers that already send a valid `x-internal-token` or legacy `X-AIVOICE-KEY` header continue to receive the same raw audio response.
+- Protected routes (`/tts`, `/stt`, `/whisper`, and `/internal/voice/*`) still enforce configured token rules.
 - Simba/Prince backend calls do not need to be added to CORS because CORS only applies to browsers. Add the backend origin to `ALLOWED_ORIGINS` only if a browser will call aiVoice directly from that origin.
 
 Operational limits:
@@ -84,18 +84,17 @@ Operational limits:
 - Allowed response formats are `mp3` and `wav`.
 - Allowed voices are governed by the configured OpenAI TTS model. `alloy` is the default and recommended Skill World voice unless a product-specific voice is configured.
 
-Verified curl for Simba/Prince backend testing when `INTERNAL_VOICE_TOKEN` is configured:
+Verified curl for Simba/Prince backend no-token testing:
 
 ```bash
 curl -fS \
   -X POST "${SKILL_WORLD_TTS_URL:-https://aivoice-wmrv.onrender.com/speak}" \
   -H "Content-Type: application/json" \
-  -H "x-internal-token: ${SKILL_WORLD_TTS_TOKEN}" \
   --data '{"text":"Simba Wa Ujamaa voice connection test.","voice":"alloy","format":"mp3","speed":1.0,"pitch":0.0}' \
   --output simba-wa-ujamaa-test.mp3
 ```
 
-If `/cors-debug` reports `expected_auth_header` as `null` and `auth_required` as `false`, omit the `x-internal-token` header for open-mode testing.
+For backward-compatibility testing, send the same `/speak` request with `-H "x-internal-token: ${SKILL_WORLD_TTS_TOKEN}"`; both the no-token and valid-token forms should return raw audio. `/cors-debug` may still report the configured protected-route auth header without making public `/speak` require that header.
 
 Safe auth failure details/log reasons are `local_route_auth_failed`, `missing_internal_token`, `invalid_internal_token`, `openai_auth_failed`, and `upstream_proxy_auth_failed`.
 
