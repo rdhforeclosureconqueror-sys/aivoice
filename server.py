@@ -16,7 +16,7 @@ from app.internal_voice import router as internal_voice_router
 APP_TITLE = "aiVoice (OpenAI TTS + Whisper STT)"
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+OPENAI_TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")\nCOMMAND_MODEL = os.getenv("OPENAI_COMMAND_MODEL", os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"))\nINTERNAL_COMMAND_TOKEN = os.getenv("INTERNAL_COMMAND_TOKEN", "")
 OPENAI_TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "alloy")
 VOICE_AUTH_MODE = os.getenv("VOICE_AUTH_MODE", "open").strip().lower() or "open"
 INTERNAL_VOICE_TOKEN = os.getenv("INTERNAL_VOICE_TOKEN", "").strip()
@@ -282,3 +282,27 @@ async def whisper(file: UploadFile = File(...), request: Request = None):
 
 
 app.include_router(internal_voice_router)
+
+
+@app.post("/command/reason")
+async def command_reason(request: Request):
+    """Protected server-to-server reasoning gateway for Mufasa Command Intelligence."""
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY is not configured")
+    if INTERNAL_COMMAND_TOKEN:
+        supplied = request.headers.get("x-mufasa-internal-token", "")
+        if supplied != INTERNAL_COMMAND_TOKEN:
+            raise HTTPException(status_code=401, detail="unauthorized")
+    body = await request.json()
+    messages = body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        raise HTTPException(status_code=400, detail="messages required")
+    payload = {"model": body.get("model") or COMMAND_MODEL, "messages": messages, "temperature": body.get("temperature", 0.2)}
+    if body.get("response_format"):
+        payload["response_format"] = body["response_format"]
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}, json=payload)
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"upstream_model_error:{response.status_code}")
+    data = response.json()
+    return {"provider": "openai", "model": data.get("model"), "choices": data.get("choices", []), "usage": data.get("usage")}
