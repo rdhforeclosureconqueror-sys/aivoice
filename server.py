@@ -16,7 +16,9 @@ from app.internal_voice import router as internal_voice_router
 APP_TITLE = "aiVoice (OpenAI TTS + Whisper STT)"
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")\nCOMMAND_MODEL = os.getenv("OPENAI_COMMAND_MODEL", os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"))\nINTERNAL_COMMAND_TOKEN = os.getenv("INTERNAL_COMMAND_TOKEN", "")
+OPENAI_TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+COMMAND_MODEL = os.getenv("OPENAI_COMMAND_MODEL", os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"))
+INTERNAL_COMMAND_TOKEN = os.getenv("INTERNAL_COMMAND_TOKEN", "")
 OPENAI_TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "alloy")
 VOICE_AUTH_MODE = os.getenv("VOICE_AUTH_MODE", "open").strip().lower() or "open"
 INTERNAL_VOICE_TOKEN = os.getenv("INTERNAL_VOICE_TOKEN", "").strip()
